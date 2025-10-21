@@ -1,5 +1,6 @@
 import express, { Application, Request, Response } from "express";
 import * as dotenv from "dotenv";
+import cors from "cors";
 
 import { connectDB } from "./config/db.js";
 import cartRoutes from "./routes/cartRoutes.js";
@@ -9,17 +10,28 @@ dotenv.config();
 const app: Application = express();
 const PORT = process.env.PORT || 2000;
 
-//Middleware
-app.use(express.json());
+async function startServer() {
+  try {
+    await connectDB();
 
-app.get("/", (req: Request, res: Response) => {
-  res.send("Hello, World!");
-});
+    // Middleware
+    app.use(express.json());
+    app.use(cors());
 
-app.use("/api/cart", cartRoutes);
+    // Server home route
+    app.get("/", (req: Request, res: Response) => {
+      res.send("Hello, World!");
+    });
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server is now running on http://localhost:${PORT}`);
-  });
-});
+    // Routes
+    app.use("/api/cart", cartRoutes);
+
+    app.listen(PORT, () => {
+      console.log(`Server is now running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+  }
+}
+
+startServer();
