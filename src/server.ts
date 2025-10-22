@@ -17,7 +17,9 @@ async function startServer() {
 
     // Middleware
     app.use(express.json());
-    app.use(cors());
+    app.use(cors({
+      origin: "https://amazon-clone-by-karta.vercel.app"
+    }));
 
     // Server home route
     app.get("/", (req: Request, res: Response) => {
