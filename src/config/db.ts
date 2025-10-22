@@ -1,10 +1,23 @@
 import mongoose, { Connection } from "mongoose";
 import { getProductModel, type ProductModelType } from "../models/Product.js";
 
-async function connectCart() {
-  try {
-    await mongoose.connect(process.env.MONGO_CART_URI!);
+/**
+ * Single primary mongoose connection for Cart DB (default mongoose connection)
+ * and a separate connection for Products (using createConnection).
+ */
+let productsDB: Connection | null = null;
+let ProductModel: ProductModelType | null = null;
 
+async function connectCart(): Promise<void> {
+  const uri = process.env.MONGO_CART_URI;
+  if (!uri) {
+    console.error('MONGO_CART_URI not set');
+    process.exit(1);
+  }
+
+  try {
+    // Use mongoose.connect for the default connection
+    await mongoose.connect(uri);
     console.log('Cart database connected successfully');
   } catch (error) {
     console.error('Error connecting to cart:', error);
@@ -12,46 +25,52 @@ async function connectCart() {
   }
 }
 
-let productsDB: Connection | null = null;
-let ProductModel: ProductModelType | null = null;
+async function connectProducts(): Promise<void> {
+  const uri = process.env.MONGO_PRODUCTS_URI;
+  if (!uri) {
+    console.warn('MONGO_PRODUCTS_URI not set — products DB will not be available');
+    return;
+  }
 
-async function connectProducts() {
   try {
-  // Use mongoose.createConnection() for the secondary DB (Products)
-    productsDB = mongoose.createConnection(process.env.MONGO_PRODUCTS_URI!);
-    
-    productsDB.on('connected', () => {
-      console.log('Products database connected successfully!');
-      
-      // Initialize the secondary model once the connection is established
-      ProductModel = getProductModel(productsDB!);
-      console.log('Product Model initialized.');
-    });
-    
-    productsDB.on('error', (err) => {
-      console.error('Error in Products DB connection:', err);
+    // createConnection returns a Connection immediately; wait for 'open' event to ensure ready
+    productsDB = mongoose.createConnection(uri);
+
+    await new Promise<void>((resolve, reject) => {
+      if (!productsDB) return reject(new Error('Failed to create products connection'));
+
+      productsDB.once('open', () => {
+        try {
+          ProductModel = getProductModel(productsDB!);
+          console.log('Products database connected and Product model initialized');
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+
+      productsDB.on('error', (err) => {
+        console.error('Products DB connection error:', err);
+        reject(err);
+      });
     });
   } catch (error) {
     console.error('Error connecting to products:', error);
+    // don't exit process — products are optional depending on env
   }
 }
 
 export const getSecondaryConnection = (): Connection => {
-  if (!productsDB) {
-    throw new Error('Secondary database connection not established!');
-  }
+  if (!productsDB) throw new Error('Secondary database connection not established');
   return productsDB;
 };
 
 export const getProductMongooseModel = (): ProductModelType => {
-  if (!ProductModel) {
-    throw new Error('Product Model not initialized. Check connection status.');
-  }
+  if (!ProductModel) throw new Error('Product Model not initialized');
   return ProductModel;
 };
 
-export const connectDB = async () => {
+export const connectDB = async (): Promise<void> => {
   await connectCart();
-
   await connectProducts();
 };
