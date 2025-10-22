@@ -32,7 +32,7 @@ connectDB();
 
 // --- Server home route ---
 app.get("/", (req: Request, res: Response) => {
-    res.send("Hello, World!");
+    res.send("Hi there, Welcome to the backend!");
 });
 
 // --- Routes ---
