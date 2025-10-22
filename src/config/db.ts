@@ -7,6 +7,7 @@ import { getProductModel, type ProductModelType } from "../models/Product.js";
  */
 let productsDB: Connection | null = null;
 let ProductModel: ProductModelType | null = null;
+let productsConnectPromise: Promise<void> | null = null;
 
 async function connectCart(): Promise<void> {
   const uri = process.env.MONGO_CART_URI;
@@ -34,7 +35,8 @@ async function connectProducts(): Promise<void> {
 
   try {
     // createConnection returns a Connection immediately; wait for 'open' event to ensure ready
-    productsDB = mongoose.createConnection(uri);
+    // create the connection and wait for it to open
+    productsDB = mongoose.createConnection();
 
     await new Promise<void>((resolve, reject) => {
       if (!productsDB) return reject(new Error('Failed to create products connection'));
@@ -53,11 +55,36 @@ async function connectProducts(): Promise<void> {
         console.error('Products DB connection error:', err);
         reject(err);
       });
+
+      // start opening the connection
+      productsDB.openUri(uri).catch((err) => {
+        // openUri errors will be forwarded to the 'error' listener above, but ensure rejection
+        console.error('productsDB.openUri error', err);
+      });
     });
   } catch (error) {
     console.error('Error connecting to products:', error);
     // don't exit process — products are optional depending on env
   }
+}
+
+/**
+ * Ensure the products DB is connected; memoizes the promise so multiple callers wait for the same attempt.
+ */
+export async function ensureProductsConnected(): Promise<void> {
+  if (ProductModel) return;
+  if (productsConnectPromise) return productsConnectPromise;
+
+  productsConnectPromise = (async () => {
+    try {
+      await connectProducts();
+    } catch (err) {
+      // keep the promise but do not throw here — caller can decide how to handle
+      console.error('ensureProductsConnected error:', err);
+    }
+  })();
+
+  return productsConnectPromise;
 }
 
 export const getSecondaryConnection = (): Connection => {
